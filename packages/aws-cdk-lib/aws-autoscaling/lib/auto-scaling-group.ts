@@ -471,6 +471,10 @@ export interface CommonAutoScalingGroupProps {
   /**
    * An instance lifecycle policy that defines how instances should be handled
    * during lifecycle events, particularly when lifecycle hooks are abandoned or fail.
+   * 
+   * @see https://docs.aws.amazon.com/autoscaling/ec2/userguide/instance-lifecycle-policy.html
+   * 
+   * @default None
    */
   readonly instanceLifecyclePolicy?: InstanceLifecyclePolicy;
 }
@@ -1220,6 +1224,8 @@ export interface RetentionTriggers {
    *
    * Retained instances don't count toward desired capacity and remain
    * until you call TerminateInstanceInAutoScalingGroup.
+   * 
+   * @default - No action specified
    */
   readonly terminateHookAbandon?: TerminateHookAbandonAction;
 }
