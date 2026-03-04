@@ -62,11 +62,28 @@ const miCapacityProvider = new ecs.ManagedInstancesCapacityProvider(stack, 'Mana
   },
 });
 
+// Create MI Capacity Provider with RESERVED capacity option type
+const miReservedCapacityProvider = new ecs.ManagedInstancesCapacityProvider(stack, 'ManagedInstancesReservedCapacityProvider', {
+  infrastructureRole: infrastructureRole,
+  capacityOptionType: ecs.CapacityOptionType.RESERVED,
+  capacityReservations: {
+    reservationPreference: ecs.ReservationPreference.RESERVATIONS_FIRST,
+  },
+  ec2InstanceProfile: instanceProfile,
+  subnets: vpc.privateSubnets,
+  securityGroups: [fmiSecurityGroup],
+  instanceRequirements: {
+    vCpuCountMin: 1,
+    memoryMin: cdk.Size.gibibytes(2),
+  },
+});
+
 // Configure security group rules using IConnectable interface
 miCapacityProvider.connections.allowFrom(ec2.Peer.ipv4(vpc.vpcCidrBlock), ec2.Port.tcp(80));
 
 // Add FMI capacity provider to cluster
 cluster.addManagedInstancesCapacityProvider(miCapacityProvider);
+cluster.addManagedInstancesCapacityProvider(miReservedCapacityProvider);
 cluster.addDefaultCapacityProviderStrategy([
   {
     capacityProvider: miCapacityProvider.capacityProviderName,

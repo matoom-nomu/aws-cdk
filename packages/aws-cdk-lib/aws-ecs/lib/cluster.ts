@@ -1509,6 +1509,51 @@ export enum CapacityOptionType {
    * Launch instances as Spot instances
    */
   SPOT = 'SPOT',
+
+  /**
+   * Launch instances using EC2 Capacity Reservations.
+   * Use with `capacityReservations` to specify reservation details.
+   */
+  RESERVED = 'RESERVED',
+}
+
+/**
+ * The reservation preference for EC2 Capacity Reservations.
+ */
+export enum ReservationPreference {
+  /**
+   * Launch instances only into Capacity Reservations.
+   */
+  RESERVATIONS_ONLY = 'RESERVATIONS_ONLY',
+
+  /**
+   * Prefer Capacity Reservations, but fall back to On-Demand if unavailable.
+   */
+  RESERVATIONS_FIRST = 'RESERVATIONS_FIRST',
+
+  /**
+   * Exclude Capacity Reservations and launch as regular On-Demand instances.
+   */
+  RESERVATIONS_EXCLUDED = 'RESERVATIONS_EXCLUDED',
+}
+
+/**
+ * Configuration for EC2 Capacity Reservations used with a Managed Instances Capacity Provider.
+ */
+export interface CapacityReservationRequest {
+  /**
+   * The ARN of the Capacity Reservation group.
+   *
+   * @default - no reservation group
+   */
+  readonly reservationGroupArn?: string;
+
+  /**
+   * The preference for using Capacity Reservations.
+   *
+   * @default - no preference specified
+   */
+  readonly reservationPreference?: ReservationPreference;
 }
 
 /**
@@ -1607,11 +1652,19 @@ export interface ManagedInstancesCapacityProviderProps {
 
   /**
    * Specifies the capacity option type for instances launched by this capacity provider.
-   * This determines whether instances are launched as On-Demand or Spot instances.
+   * Use `RESERVED` together with `capacityReservations` to launch instances into EC2 Capacity Reservations.
    *
    * @default - `ON_DEMAND`
    */
   readonly capacityOptionType?: CapacityOptionType;
+
+  /**
+   * The EC2 Capacity Reservation configuration for this capacity provider.
+   * Only valid when `capacityOptionType` is `RESERVED`.
+   *
+   * @default - no capacity reservation
+   */
+  readonly capacityReservations?: CapacityReservationRequest;
 }
 
 /**
@@ -1676,6 +1729,10 @@ export class ManagedInstancesCapacityProvider extends Construct implements ec2.I
       throw new ValidationError('Security groups cannot be an empty array. Provide at least one security group.', this);
     }
 
+    if (props.capacityReservations && props.capacityOptionType !== CapacityOptionType.RESERVED) {
+      throw new ValidationError('capacityReservations can only be specified when capacityOptionType is RESERVED.', this);
+    }
+
     // Create or use provided infrastructure role
     const roleId = `${id}Role`;
     this.infrastructureRole = props.infrastructureRole ?? new iam.Role(this, roleId, {
@@ -1708,6 +1765,12 @@ export class ManagedInstancesCapacityProvider extends Construct implements ec2.I
       infrastructureRoleArn: this.infrastructureRole.roleArn,
       instanceLaunchTemplate: {
         capacityOptionType: props.capacityOptionType,
+        ...(props.capacityReservations && {
+          capacityReservations: {
+            reservationGroupArn: props.capacityReservations.reservationGroupArn,
+            reservationPreference: props.capacityReservations.reservationPreference,
+          },
+        }),
         ec2InstanceProfileArn: this.ec2InstanceProfile.instanceProfileArn,
         networkConfiguration: {
           subnets: props.subnets.map((subnet: ec2.ISubnet) => subnet.subnetId),

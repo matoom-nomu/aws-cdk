@@ -4340,6 +4340,96 @@ describe('cluster', () => {
         },
       });
     });
+
+    test.each([
+      [
+        'with reservationGroupArn and reservationPreference',
+        { reservationGroupArn: 'arn:aws:resource-groups:us-east-1:123456789012:group/my-group', reservationPreference: ecs.ReservationPreference.RESERVATIONS_FIRST },
+        { ReservationGroupArn: 'arn:aws:resource-groups:us-east-1:123456789012:group/my-group', ReservationPreference: 'RESERVATIONS_FIRST' },
+      ],
+      [
+        'with reservationPreference only',
+        { reservationPreference: ecs.ReservationPreference.RESERVATIONS_ONLY },
+        { ReservationPreference: 'RESERVATIONS_ONLY' },
+      ],
+    ] as const)('can set capacityOptionType to RESERVED with capacityReservations %s', (_label, capacityReservations, expectedReservations) => {
+      const app = new cdk.App();
+      const stack = new cdk.Stack(app, 'test');
+      const vpc = new ec2.Vpc(stack, 'Vpc');
+      const infrastructureRole = new iam.Role(stack, 'InfraRole', { assumedBy: new iam.ServicePrincipal('ecs.amazonaws.com') });
+      const instanceProfile = new iam.InstanceProfile(stack, 'InstanceProfile', {
+        role: new iam.Role(stack, 'InstanceRole', { assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com') }),
+      });
+      const securityGroup = new ec2.SecurityGroup(stack, 'SecurityGroup', { vpc, description: 'test' });
+
+      new ecs.ManagedInstancesCapacityProvider(stack, 'provider', {
+        infrastructureRole,
+        ec2InstanceProfile: instanceProfile,
+        subnets: vpc.privateSubnets,
+        securityGroups: [securityGroup],
+        capacityOptionType: ecs.CapacityOptionType.RESERVED,
+        capacityReservations,
+      });
+
+      Template.fromStack(stack).hasResourceProperties('AWS::ECS::CapacityProvider', {
+        ManagedInstancesProvider: {
+          InstanceLaunchTemplate: {
+            CapacityOptionType: 'RESERVED',
+            CapacityReservations: expectedReservations,
+          },
+        },
+      });
+    });
+
+    test.each([
+      [ecs.CapacityOptionType.ON_DEMAND],
+      [ecs.CapacityOptionType.SPOT],
+      [undefined],
+    ])('throws when capacityReservations is specified with capacityOptionType %s', (capacityOptionType) => {
+      const app = new cdk.App();
+      const stack = new cdk.Stack(app, 'test');
+      const vpc = new ec2.Vpc(stack, 'Vpc');
+      const infrastructureRole = new iam.Role(stack, 'InfraRole', { assumedBy: new iam.ServicePrincipal('ecs.amazonaws.com') });
+      const instanceProfile = new iam.InstanceProfile(stack, 'InstanceProfile', {
+        role: new iam.Role(stack, 'InstanceRole', { assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com') }),
+      });
+      const securityGroup = new ec2.SecurityGroup(stack, 'SecurityGroup', { vpc, description: 'test' });
+
+      expect(() => new ecs.ManagedInstancesCapacityProvider(stack, 'provider', {
+        infrastructureRole,
+        ec2InstanceProfile: instanceProfile,
+        subnets: vpc.privateSubnets,
+        securityGroups: [securityGroup],
+        capacityOptionType,
+        capacityReservations: { reservationPreference: ecs.ReservationPreference.RESERVATIONS_FIRST },
+      })).toThrow('capacityReservations can only be specified when capacityOptionType is RESERVED.');
+    });
+
+    test('capacityReservations is absent when not specified', () => {
+      const app = new cdk.App();
+      const stack = new cdk.Stack(app, 'test');
+      const vpc = new ec2.Vpc(stack, 'Vpc');
+      const infrastructureRole = new iam.Role(stack, 'InfraRole', { assumedBy: new iam.ServicePrincipal('ecs.amazonaws.com') });
+      const instanceProfile = new iam.InstanceProfile(stack, 'InstanceProfile', {
+        role: new iam.Role(stack, 'InstanceRole', { assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com') }),
+      });
+      const securityGroup = new ec2.SecurityGroup(stack, 'SecurityGroup', { vpc, description: 'test' });
+
+      new ecs.ManagedInstancesCapacityProvider(stack, 'provider', {
+        infrastructureRole,
+        ec2InstanceProfile: instanceProfile,
+        subnets: vpc.privateSubnets,
+        securityGroups: [securityGroup],
+      });
+
+      Template.fromStack(stack).hasResourceProperties('AWS::ECS::CapacityProvider', {
+        ManagedInstancesProvider: {
+          InstanceLaunchTemplate: {
+            CapacityReservations: Match.absent(),
+          },
+        },
+      });
+    });
   });
 
   test('can disable Managed Scaling and Managed Termination Protection for ASG capacity provider', () => {
